@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SplitCart — Hostel Group Order Coordinator</title>
+<title>SplitCart — India's Live Group Order Feed</title>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
@@ -29,16 +29,18 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
 .track{background:rgba(255,255,255,.08)}.fill{background:linear-gradient(90deg,#059669,#10b981,#22d3ee);box-shadow:0 0 14px rgba(34,211,238,.5);transition:width .7s cubic-bezier(.22,1,.36,1)}
 .avatar{background:linear-gradient(135deg,#10b981,#0891b2)}
 .pool{border-top:3px solid var(--b)}
+.hl{outline:2px solid #34d399;outline-offset:3px}
 .qr{background:#fff;padding:6px;border-radius:10px;width:132px;height:132px;display:flex;align-items:center;justify-content:center}.qr canvas,.qr img{width:120px!important;height:120px!important}
 .qrbig{background:#fff;padding:12px;border-radius:14px;width:232px;height:232px;display:flex;align-items:center;justify-content:center;margin:0 auto;box-shadow:0 0 40px -6px rgba(16,185,129,.55)}.qrbig canvas,.qrbig img{width:208px!important;height:208px!important}
 .tab-on{background:rgba(16,185,129,.18);border-color:rgba(52,211,153,.5)!important;color:#fff!important}
 .spin{width:12px;height:12px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
-.pay-ov{background:radial-gradient(circle at 50% 0,rgba(16,185,129,.28),transparent 55%),rgba(2,8,6,.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background-image:linear-gradient(rgba(16,185,129,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(16,185,129,.07) 1px,transparent 1px),radial-gradient(circle at 50% 0,rgba(16,185,129,.28),transparent 55%);background-size:32px 32px,32px 32px,auto}
-.pay-card{background:linear-gradient(180deg,rgba(6,40,28,.92),rgba(4,18,14,.96));border:1px solid rgba(52,211,153,.4);box-shadow:0 0 0 1px rgba(16,185,129,.2),0 0 60px -10px rgba(16,185,129,.6)}
+.pay-ov{background:radial-gradient(circle at 50% 0,rgba(16,185,129,.28),transparent 55%),rgba(2,8,6,.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.pay-card{background:linear-gradient(180deg,rgba(6,40,28,.92),rgba(4,18,14,.96));border:1px solid rgba(52,211,153,.4);box-shadow:0 0 60px -10px rgba(16,185,129,.6)}
 .big-btn{display:flex;width:100%;justify-content:center;align-items:center;gap:.5rem;font-size:16px;font-weight:700;padding:.95rem 1rem;border-radius:.85rem;color:#fff;background:linear-gradient(180deg,#10b981,#047857);border:1px solid #34d399;box-shadow:0 8px 28px rgba(16,185,129,.4);text-decoration:none}
 @keyframes sp{to{transform:rotate(360deg)}}
 @keyframes fi{from{opacity:0;transform:translateY(6px)}}.fi{animation:fi .3s ease-out}
 @keyframes wp{50%{box-shadow:0 0 0 7px rgba(245,158,11,0)}}.wp{animation:wp 1.8s infinite}
+@keyframes ld{50%{opacity:.35}}.ld{animation:ld 1.4s infinite}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -46,8 +48,8 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
 <nav class="border-b border-white/5 sticky top-0 z-40 backdrop-blur-xl bg-[#06090a]/85">
  <div class="max-w-[1500px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
   <div class="flex items-center gap-2.5"><div class="w-9 h-9 rounded-xl pri flex items-center justify-center text-white font-bold text-sm">SC</div>
-   <div><h1 class="font-bold text-lg leading-tight text-white">SplitCart</h1><p class="text-[11px] text-slate-500 leading-tight">Hostel delivery coordinator</p></div></div>
-  <div class="flex items-center gap-2"><span id="cloud" class="hidden sm:inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 rounded-full">● Connecting…</span>
+   <div><h1 class="font-bold text-lg leading-tight text-white">SplitCart</h1><p class="text-[11px] text-slate-500 leading-tight">Open group-order feed · India</p></div></div>
+  <div class="flex items-center gap-2"><span id="cloud" class="inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 rounded-full">● Connecting…</span>
    <span id="count" class="text-xs text-slate-400 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full mono">0 pools</span></div>
  </div>
 </nav>
@@ -55,12 +57,13 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
 <div class="max-w-[1500px] mx-auto px-4 sm:px-6 py-6 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-start">
  <aside class="space-y-5 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
   <div class="glass neon rounded-2xl p-5">
-   <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-white text-sm">Create a delivery pool</h2>
+   <div class="flex items-center justify-between mb-4"><h2 class="font-semibold text-white text-sm">Start a public delivery pool</h2>
     <button type="button" id="autofill" class="text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-full hover:bg-emerald-500/20">Autofill</button></div>
    <form id="fCreate" class="space-y-3">
     <div class="grid grid-cols-2 gap-3">
      <div><label class="lbl" for="cPlat">Platform</label><select id="cPlat" class="inp"><option value="blinkit">Blinkit</option><option value="swiggy">Swiggy</option><option value="zomato">Zomato</option></select></div>
      <div><label class="lbl" for="cWing">Hostel wing</label><input id="cWing" required maxlength="20" class="inp" placeholder="Wing A"></div></div>
+    <div><label class="lbl" for="cInst">Institute / area</label><input id="cInst" required maxlength="40" class="inp" placeholder="IIT Kharagpur, Kolkata"></div>
     <div class="grid grid-cols-2 gap-3">
      <div><label class="lbl" for="cHost">Your name (host)</label><input id="cHost" required maxlength="30" class="inp" placeholder="Riya"></div>
      <div><label class="lbl" for="cPhone">Mobile number</label><input id="cPhone" required type="tel" inputmode="numeric" class="inp mono" placeholder="98765 43210"></div></div>
@@ -71,15 +74,15 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
      <div><label class="lbl" for="cTime">Closes at</label><input id="cTime" required type="time" class="inp mono px-2"></div></div>
     <p id="cErr" class="hidden text-xs text-red-400" role="alert"></p>
     <button class="btn pri w-full py-2.5 text-sm">Launch pool</button>
-    <p class="text-[11px] text-slate-500 leading-relaxed">Your number is masked until someone joins. Pools lock at closing time, and a locked pool deletes itself 12 hours later.</p>
+    <p class="text-[11px] text-slate-500 leading-relaxed">Your pool goes live on the public feed instantly. Your number stays masked until someone joins. Pools lock at closing time and delete themselves 12 hours later.</p>
    </form>
   </div>
   <div class="glass neon rounded-2xl p-5">
-   <h2 class="font-semibold text-white text-sm mb-4">Add a roommate to a pool</h2>
+   <h2 class="font-semibold text-white text-sm mb-4">Join a pool &amp; add an item</h2>
    <form id="fJoin" class="space-y-3" autocomplete="off">
     <div><label class="lbl" for="jPool">Target pool</label><select id="jPool" class="inp"></select></div>
     <div class="grid grid-cols-2 gap-3">
-     <div><label class="lbl" for="jName">Roommate name</label><input id="jName" required maxlength="30" class="inp" placeholder="Aman"></div>
+     <div><label class="lbl" for="jName">Your name</label><input id="jName" required maxlength="30" class="inp" placeholder="Aman"></div>
      <div><label class="lbl" for="jPhone">Phone number</label><input id="jPhone" required type="tel" inputmode="numeric" class="inp mono" placeholder="91234 56789"></div></div>
     <div class="grid grid-cols-[1fr_96px] gap-3">
      <div><label class="lbl" for="jItem">Item</label><input id="jItem" required maxlength="40" class="inp" placeholder="Maggi ×4"></div>
@@ -94,13 +97,13 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
  <main>
   <div class="sticky top-[65px] z-30 -mx-2 px-2 pt-2 pb-3 bg-[#06090a]/90 backdrop-blur-xl">
    <h2 class="text-xl font-bold text-white">Live order pool board</h2>
-   <p class="text-sm text-slate-500 mb-3">Track every wing pool and settle up over WhatsApp.</p>
-   <input id="q" type="search" class="inp neon py-3" placeholder='Filter by wing, host or brand, e.g. "Wing A"' aria-label="Filter pools">
+   <p class="text-sm text-slate-500 mb-3">Every live pool across India, updating in real time.</p>
+   <input id="q" type="search" class="inp neon py-3" placeholder='Filter by institute, wing, host or brand, e.g. "Wing A"' aria-label="Filter pools">
    <div class="flex gap-2 mt-3">
-    <button id="tA" data-tab="active" class="btn flex-1 py-2">Active <span id="nA" class="mono opacity-70">0</span></button>
+    <button id="tA" data-tab="active" class="btn flex-1 py-2">Live feed <span id="nA" class="mono opacity-70">0</span></button>
     <button id="tR" data-tab="archive" class="btn flex-1 py-2">Locked / history <span id="nR" class="mono opacity-70">0</span></button></div>
   </div>
-  <div id="empty" class="glass rounded-2xl p-12 text-center"><h3 id="eT" class="text-white font-semibold mb-1"></h3><p id="eX" class="text-sm text-slate-500 max-w-sm mx-auto"></p></div>
+  <div id="empty" class="glass rounded-2xl p-12 text-center"><h3 id="eT" class="text-white font-semibold mb-1 ld">Loading live feed…</h3><p id="eX" class="text-sm text-slate-500 max-w-sm mx-auto"></p></div>
   <div id="board" class="grid grid-cols-1 2xl:grid-cols-2 gap-5"></div>
  </main>
 </div>
@@ -113,14 +116,14 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
     <div><p class="text-[11px] tracking-widest text-emerald-400 font-semibold mono">⚡ SPLITCART PAYMENT HUB</p>
      <h2 id="pmTitle" class="text-lg font-bold text-white mt-1">Pay <span id="pmHost" class="text-emerald-300"></span></h2></div>
     <button type="button" id="pmClose" class="btn !px-2.5 !py-1" aria-label="Close payment hub">✕</button></div>
-   <div class="text-center my-4"><p class="text-[11px] text-slate-400">Amount to pay</p><p id="pmAmt" class="mono text-4xl font-bold text-emerald-300" style="text-shadow:0 0 24px rgba(16,185,129,.6)"></p></div>
+   <div class="text-center my-4"><p class="text-[11px] text-slate-400">Amount to pay</p><p id="pmAmt" class="mono text-4xl font-bold text-emerald-300"></p></div>
    <div id="pmQr" class="qrbig" aria-label="UPI payment QR code"></div>
    <p class="text-[11px] text-slate-400 text-center mt-2">Scan with any UPI app, or tap the button below on your phone.</p>
    <div class="mt-4 rounded-xl bg-white/[0.04] border border-emerald-500/25 p-3 flex items-center justify-between gap-2">
     <div class="min-w-0"><p class="text-[10px] text-slate-500">Host UPI ID</p><p id="pmUpi" class="mono text-sm text-emerald-200 truncate"></p></div>
     <button type="button" id="pmCopy" class="btn shrink-0">📋 Copy Host UPI ID</button></div>
    <a id="pmLaunch" class="big-btn mt-4" href="#">📲 Launch Payment App</a>
-   <p class="text-[10px] text-slate-500 text-center mt-3">Note: SplitCartHostel · Always confirm the amount and UPI ID before paying.</p>
+   <p class="text-[10px] text-slate-500 text-center mt-3">Always confirm the amount and UPI ID before paying.</p>
   </div>
  </div>
 </div>
@@ -141,54 +144,53 @@ const database = firebase.database();
 </script>
 <script>
 (() => {
-const K = {S:'splitcart_sessions_v6', F:'splitcart_profile_v6', D:'splitcart_device_v6'};
+const K = {S:'splitcart_identity_v7', F:'splitcart_profile_v7', D:'splitcart_device_v7'};
 const DEL_AFTER = 12*3600*1000, UPI_NOTE = 'SplitCartHostel';
 const PL = {blinkit:{n:'Blinkit',u:'https://blinkit.com',b:'#f8cb46',i:'#1a1a1a'}, swiggy:{n:'Swiggy',u:'https://www.swiggy.com',b:'#fc8019',i:'#fff'}, zomato:{n:'Zomato',u:'https://www.zomato.com',b:'#e23744',i:'#fff'}};
 const $ = id => document.getElementById(id);
 const rd = (k,f) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : f; } catch(e){ return f; } };
 const wr = (k,v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} };
 const uid = p => p + Math.random().toString(36).slice(2,9);
-const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money = p => '₹' + (p/100).toFixed(2), paise = r => Math.round(r*100);
 const clean = v => v.replace(/\D/g,'').replace(/^91(?=\d{10}$)/,''), okPhone = d => /^[6-9]\d{9}$/.test(d);
 const same = (a,b) => a.trim().toLowerCase() === b.trim().toLowerCase();
 const initials = n => n.trim().split(/\s+/).slice(0,2).map(w => (w[0]||'').toUpperCase()).join('');
 const pad = x => String(x).padStart(2,'0');
 const fmt = ms => { const s = Math.max(0, Math.floor(ms/1000)); return pad(Math.floor(s/3600)) + ':' + pad(Math.floor(s%3600/60)) + ':' + pad(s%60); };
+const ref = path => database.ref('public_pools' + (path ? '/' + path : ''));
+const fail = () => toast('Cloud sync failed. Check your connection.');
 
-// Server clock: every device measures time against Firebase's clock, so timers agree everywhere
 let OFF = 0;
 const NOW = () => Date.now() + OFF;
 database.ref('.info/serverTimeOffset').on('value', s => { OFF = s.val() || 0; tick(); });
 
 let DEV = rd(K.D, null); if (!DEV) { DEV = uid('dev_'); wr(K.D, DEV); }
-let pools = [], sess = rd(K.S, {}), tab = 'active', ready = false, pend = false, synced = {};
+let pools = [], sess = rd(K.S, {}), tab = 'active', ready = false, pend = false, busyIds = {};
 if (!sess || typeof sess !== 'object') sess = {};
 let dl = new URLSearchParams(window.location.search).get('poolId');
+const saveSess = () => wr(K.S, sess);
 
-function save(){
-  wr(K.S, sess);
-  const ops = [], ids = new Set(pools.map(p => p.id));
-  pools.forEach(p => { const j = JSON.stringify(p); if (synced[p.id] !== j) { synced[p.id] = j; ops.push(() => database.ref('pools/' + p.id).set(JSON.parse(j)).catch(() => toast('Cloud sync failed. Check your connection.'))); } });
-  Object.keys(synced).forEach(id => { if (!ids.has(id)) { delete synced[id]; ops.push(() => database.ref('pools/' + id).remove()); } });
-  ops.forEach(f => f());
-}
 function norm(p){
   p.parts = Object.values(p.parts || {}).map(x => ({...x, items: Object.values(x.items || {})}));
   p.closed = !!p.closed; return p;
 }
 const typing = () => { const a = document.activeElement; return !!(a && a.tagName === 'INPUT' && a.closest('#board') && a.value); };
-// Realtime listener: any change from any device re-renders instantly
-database.ref('pools').on('value', snap => {
-  pools = Object.values(snap.val() || {}).filter(p => p && p.id).map(norm).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
-  synced = {}; pools.forEach(p => synced[p.id] = JSON.stringify(p));
-  ready = true; setCloud(true); purge();
-  if (typing()) pend = true; else render();
-  deepLink();
-}, err => { setCloud(false); toast(err && err.code === 'PERMISSION_DENIED' ? 'Database rules are blocking access' : 'Cloud connection error'); });
-database.ref('.info/connected').on('value', s => setCloud(!!s.val()));
-function setCloud(on){ const c = $('cloud'); c.textContent = on ? '● Live cloud sync' : '● Offline'; c.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ' + (on ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-red-300 bg-red-500/10 border-red-500/25'); }
-const poolLink = p => window.location.origin + window.location.pathname + '?poolId=' + p.id;
+
+// ===== Global live feed listener: every device sees every pool =====
+function initLiveFeed(){
+  ref().on('value', snap => {
+    pools = Object.values(snap.val() || {}).filter(p => p && p.id && p.closesAt).map(norm).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    ready = true; setCloud(true);
+    if (typing()) pend = true; else render();
+    deepLink();
+  }, err => { setCloud(false); toast(err && err.code === 'PERMISSION_DENIED' ? 'Database rules are blocking access' : 'Cloud connection error'); });
+  database.ref('.info/connected').on('value', s => setCloud(!!s.val()));
+}
+function setCloud(on){ const c = $('cloud'); c.textContent = on ? '● Live cloud sync' : '● Offline'; c.className = 'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ' + (on ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-red-300 bg-red-500/10 border-red-500/25'); }
+
+// Clean shareable link on the active domain (Vercel)
+const poolLink = p => window.location.origin + window.location.pathname + '?poolId=' + encodeURIComponent(p.id);
 function deepLink(){
   if (!dl || !ready) return;
   const p = find(dl); dl = null;
@@ -196,7 +198,7 @@ function deepLink(){
   tab = closed(p) ? 'archive' : 'active'; $('q').value = ''; render();
   if (!closed(p)) $('jPool').value = p.id;
   const el = document.querySelector(`article[data-id="${p.id}"]`);
-  if (el) { el.scrollIntoView({behavior:'smooth', block:'center'}); el.style.outline = '2px solid #34d399'; }
+  if (el) { el.scrollIntoView({behavior:'smooth', block:'center'}); el.classList.add('hl'); setTimeout(() => el.classList.remove('hl'), 6000); }
 }
 
 const prof = () => rd(K.F, {});
@@ -208,15 +210,23 @@ const isHost = p => { const m = meOf(p); return !!m && m.host; };
 const total = pt => pt.items.reduce((s,i) => s + paise(i.price), 0);
 
 let tt; function toast(m){ const t = $('toast'); t.textContent = m; t.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(() => t.classList.add('hidden'), 2600); }
-function busy(btn, label, fn){ const h = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span>' + label; setTimeout(() => { fn(); btn.disabled = false; btn.innerHTML = h; }, 350); }
-function lock(p){ if (p.closed) return; p.closed = true; p.lockedAt = NOW(); save(); render(); }
+function busy(btn, label, fn){ const h = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span>' + label; setTimeout(() => { fn(); btn.disabled = false; btn.innerHTML = h; }, 300); }
+function lock(p, manual){ if (p.closed) return; ref(p.id).update({closed: true, lockedAt: manual ? NOW() : p.closesAt}).catch(fail); }
 function nextTime(hhmm){ const [h,m] = hhmm.split(':').map(Number), d = new Date(NOW()); d.setHours(h,m,0,0); if (d.getTime() <= NOW()) d.setDate(d.getDate()+1); return d.getTime(); }
 
 function claim(p, name, phone){
   const ex = p.parts.find(x => same(x.name, name));
-  if (ex) { if (ex.owner !== DEV) return 'The name "' + ex.name + '" is already claimed by another user in this pool.'; if (phone) ex.phone = phone; return ex; }
-  const pt = {pid: uid('m_'), name, phone: phone || '', host: false, owner: DEV, items: []}; p.parts.push(pt); return pt;
+  if (ex) {
+    if (ex.owner !== DEV) return 'The name "' + ex.name + '" is already claimed by another user in this pool.';
+    if (phone && ex.phone !== phone) ref(`${p.id}/parts/${ex.pid}/phone`).set(phone).catch(fail);
+    return ex;
+  }
+  const pt = {pid: uid('m_'), name, phone: phone || '', host: false, owner: DEV};
+  sess[p.id] = name; saveSess();
+  ref(`${p.id}/parts/${pt.pid}`).set(pt).catch(fail);
+  return {...pt, items: []};
 }
+const addItem = (p, pt, name, price) => { const id = uid('i_'); ref(`${p.id}/parts/${pt.pid}/items/${id}`).set({id, name, price: Math.round(price*100)/100}).catch(fail); };
 
 function split(p){
   const ms = p.parts.map(x => ({name:x.name, sub: total(x)})).filter(m => m.sub > 0);
@@ -233,33 +243,35 @@ const upiStr = (upiId, host, amt) => `upi://pay?pa=${upiId}&pn=${encodeURICompon
 const upi = (p, x) => upiStr(p.upi, p.host, (x/100).toFixed(2));
 const hubLink = (p, x) => `${window.location.origin + window.location.pathname}?pay=true&host=${encodeURIComponent(p.host)}&upi=${encodeURIComponent(p.upi)}&amt=${encodeURIComponent((x/100).toFixed(2))}`;
 
-function memberMsg(p, r){
-  return `*${r.name}* owes *${money(r.tot)}* to ${p.host} for the ${PL[p.platform].n} order (${p.wing}).\n👉 Pay now: ${hubLink(p, r.tot)}`;
-}
+function memberMsg(p, r){ return `*${r.name}* owes *${money(r.tot)}* to ${p.host} for the ${PL[p.platform].n} order (${p.wing}).\n👉 Pay now: ${hubLink(p, r.tot)}`; }
 function waGroup(p){
   const s = split(p), rows = s.rows.filter(r => r.name !== p.host && r.tot > 0);
-  const msg = `⚡ *SplitCart* — ${PL[p.platform].n} order for ${p.wing} is locked. ${p.host} placed it.\nCart total: ${money(s.total)}${s.waived ? ' (delivery free)' : ''}\n🔗 Live pool: ${poolLink(p)}\n\n` + (rows.length ? rows.map(r => memberMsg(p, r)).join('\n\n') : 'Nobody else owes anything.');
+  const msg = `⚡ *SplitCart* — ${PL[p.platform].n} order for ${p.wing}${p.inst ? ' (' + p.inst + ')' : ''} is locked. ${p.host} placed it.\nCart total: ${money(s.total)}${s.waived ? ' (delivery free)' : ''}\n🔗 Open the pool: ${poolLink(p)}\n\n` + (rows.length ? rows.map(r => memberMsg(p, r)).join('\n\n') : 'Nobody else owes anything.');
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
 }
 function waOne(p, name){
   const r = split(p).rows.find(x => x.name === name); if (!r) return;
   const pt = p.parts.find(x => x.name === name), num = pt && pt.phone ? '91' + pt.phone : '';
-  window.open(`https://wa.me/${num}?text=` + encodeURIComponent('⚡ SplitCart\n' + memberMsg(p, r) + '\n🔗 Live pool: ' + poolLink(p)), '_blank', 'noopener');
+  window.open(`https://wa.me/${num}?text=` + encodeURIComponent('⚡ SplitCart\n' + memberMsg(p, r) + '\n🔗 Open the pool: ' + poolLink(p)), '_blank', 'noopener');
+}
+function waInvite(p){
+  const msg = `⚡ Join our ${PL[p.platform].n} group order (${p.wing}${p.inst ? ', ' + p.inst : ''}) hosted by ${p.host}. Closes ${new Date(p.closesAt).toLocaleString([], {hour:'2-digit', minute:'2-digit'})}.\n🔗 ${poolLink(p)}`;
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
 }
 
 function card(p){
-  const P = PL[p.platform], cl = closed(p), me = meOf(p), host = isHost(p);
+  const P = PL[p.platform] || PL.blinkit, cl = closed(p), me = meOf(p), host = isHost(p);
   const thr = paise(p.thr), grand = p.parts.reduce((s,x) => s + total(x), 0);
   const pct = thr > 0 ? Math.min(100, grand/thr*100) : 100, ok = thr > 0 ? grand >= thr : true;
   const people = p.parts.map(pt => {
     const mine = me && me.pid === pt.pid;
-    const chips = pt.items.map(it => `<span class="chip">${esc(it.name)} <b class="text-emerald-400 mono font-medium">₹${it.price.toFixed(2)}</b>${mine && !cl ? `<button type="button" data-act="rm" data-id="${p.id}" data-i="${it.id}" class="text-slate-500 hover:text-red-400" aria-label="Remove ${esc(it.name)}">✕</button>` : ''}</span>`).join('') || '<span class="text-[11px] text-slate-600 italic">No items yet</span>';
+    const chips = pt.items.map(it => `<span class="chip">${esc(it.name)} <b class="text-emerald-400 mono font-medium">₹${Number(it.price).toFixed(2)}</b>${mine && !cl ? `<button type="button" data-act="rm" data-id="${p.id}" data-pid="${pt.pid}" data-i="${it.id}" class="text-slate-500 hover:text-red-400" aria-label="Remove ${esc(it.name)}">✕</button>` : ''}</span>`).join('') || '<span class="text-[11px] text-slate-600 italic">No items yet</span>';
     return `<div class="flex gap-3 py-2.5 border-b border-white/5 last:border-0"><div class="avatar w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0">${esc(initials(pt.name))}</div>
       <div class="flex-1 min-w-0"><div class="flex justify-between mb-1.5 gap-2"><span class="text-sm font-medium text-white truncate">${esc(pt.name)}${pt.host ? ' <span class="text-[9px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded">HOST</span>' : ''}${mine ? ' <span class="text-[9px] text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 px-1.5 py-0.5 rounded">YOU</span>' : ''}</span><span class="text-xs mono text-slate-400">${money(total(pt))}</span></div><div class="flex flex-wrap gap-1.5">${chips}</div></div></div>`;
   }).join('');
 
   const contact = me
-    ? `<div class="flex items-center justify-between gap-2 flex-wrap"><span class="mono text-sm text-emerald-300">+91 ${p.phone.slice(0,5)} ${p.phone.slice(5)}</span><div class="flex gap-2"><a class="btn dng !text-emerald-300 !border-emerald-500/30 !bg-emerald-500/10" href="tel:+91${p.phone}">📞 Call</a><a class="btn" href="https://wa.me/91${p.phone}" target="_blank" rel="noopener">💬 Chat</a></div></div>`
+    ? `<div class="flex items-center justify-between gap-2 flex-wrap"><span class="mono text-sm text-emerald-300">+91 ${esc(p.phone.slice(0,5))} ${esc(p.phone.slice(5))}</span><div class="flex gap-2"><a class="btn !text-emerald-300 !border-emerald-500/30 !bg-emerald-500/10" href="tel:+91${esc(p.phone)}">📞 Call</a><a class="btn" href="https://wa.me/91${esc(p.phone)}" target="_blank" rel="noopener">💬 Chat</a></div></div>`
     : `<div class="flex items-center justify-between gap-2 flex-wrap"><span class="mono text-sm text-slate-500">🔒 +91 ••••• •••••</span><div class="flex gap-2"><button disabled class="btn">📞 Call</button><button disabled class="btn">💬 Chat</button></div></div><p class="text-[11px] text-slate-500 mt-1.5">Join this pool to unlock the host's contact.</p>`;
 
   const badge = cl ? '' : ok ? '<div class="inline-block mt-2 text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full">✓ Free delivery unlocked</div>'
@@ -275,6 +287,7 @@ function card(p){
    <div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><h3 class="font-bold text-white text-lg">${P.n}</h3>
     <span class="text-[11px] text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded-full">${esc(p.wing)}</span>
     <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cl ? 'text-red-300 bg-red-500/10 border-red-500/30' : 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'}">${cl ? 'Locked' : 'Open'}</span></div>
+    ${p.inst ? `<p class="text-xs text-slate-300 mt-1">📍 ${esc(p.inst)}</p>` : ''}
     <p class="text-[11px] text-slate-500 mt-1">Host: <span class="text-slate-300">${esc(p.host)}</span> · closes ${new Date(p.closesAt).toLocaleString([], {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</p></div>
     <div class="text-right shrink-0"><p class="text-[10px] text-slate-500">${cl ? 'Status' : 'Time left'}</p><p data-t="${p.id}" class="mono text-lg font-semibold ${cl ? 'text-red-400' : 'text-emerald-300'}">${cl ? 'LOCKED' : fmt(p.closesAt-NOW())}</p></div></div>
    <div class="mt-4 rounded-xl bg-white/[0.03] border border-white/[0.07] p-3">${contact}</div>
@@ -282,7 +295,8 @@ function card(p){
     <div class="w-full h-2.5 rounded-full track overflow-hidden"><div class="h-full rounded-full fill" style="width:${pct.toFixed(1)}%"></div></div>${badge}</div>
    ${host && !cl ? `<div class="mt-4 grid grid-cols-2 gap-2"><button data-act="lock" data-id="${p.id}" class="btn dng py-2">🔒 Lock pool now</button><button data-act="ext" data-id="${p.id}" class="btn py-2">＋10 minutes</button></div>` : ''}
    <div class="mt-4 flex-1"><p class="text-[11px] text-slate-500 font-semibold mb-1">Members · ${p.parts.length}</p><div class="max-h-48 overflow-y-auto pr-1">${people}</div></div>
-   <a href="${P.u}" target="_blank" rel="noopener" class="btn mt-4 py-2.5 text-sm" style="background:${P.b};color:${P.i};border-color:transparent">🛒 Open ${P.n}</a>
+   <div class="grid grid-cols-2 gap-2 mt-4"><a href="${P.u}" target="_blank" rel="noopener" class="btn py-2.5 text-sm" style="background:${P.b};color:${P.i};border-color:transparent">🛒 Open ${P.n}</a>
+   <button data-act="inv" data-id="${p.id}" class="btn wa py-2.5 text-sm">📲 Share link</button></div>
    ${action}
    ${grand > 0 ? summary(p, cl, !!me, host) : ''}
    ${host && !cl ? `<button data-act="del" data-id="${p.id}" class="btn dng mt-3 py-2">🗑 Delete pool</button>` : ''}
@@ -305,143 +319,139 @@ function summary(p, cl, ver, host){
    <div class="flex justify-between mt-3 px-1 text-xs"><span class="text-slate-500">${PL[p.platform].n} cart total</span><span class="mono text-white font-semibold">${money(s.total)}</span></div>${end}</div>`;
 }
 
+// Real-time search over the downloaded global feed array
+const hay = p => [PL[p.platform] ? PL[p.platform].n : '', p.wing, p.host, p.inst, ...p.parts.map(x => x.name)].join(' ').toLowerCase();
 function render(){
-  const term = $('q').value.trim().toLowerCase();
+  const term = $('q').value.trim().toLowerCase(), words = term.split(/\s+/).filter(Boolean);
   const act = pools.filter(p => !closed(p)), arc = pools.filter(p => closed(p));
   $('count').textContent = pools.length + ' pool' + (pools.length === 1 ? '' : 's');
   $('nA').textContent = act.length; $('nR').textContent = arc.length;
   $('tA').classList.toggle('tab-on', tab === 'active'); $('tR').classList.toggle('tab-on', tab === 'archive');
-  const list = (tab === 'active' ? act : arc).filter(p => !term || `${PL[p.platform].n} ${p.wing} ${p.host}`.toLowerCase().includes(term));
+  const list = (tab === 'active' ? act : arc).filter(p => { const h = hay(p); return words.every(w => h.includes(w)); });
   const keep = document.activeElement && document.activeElement.form ? {f: document.activeElement.form.dataset.id, n: document.activeElement.name} : null;
   $('board').innerHTML = list.map(card).join('');
   $('empty').classList.toggle('hidden', list.length > 0);
-  $('eT').textContent = term ? 'No pools match' : tab === 'active' ? 'No active pools' : 'Nothing here yet';
-  $('eX').textContent = term ? 'Try another wing, host or brand.' : tab === 'active' ? 'Create a delivery pool to start a group order for your wing.' : 'Locked pools appear here and delete themselves after 12 hours.';
+  $('eT').classList.remove('ld');
+  $('eT').textContent = !ready ? 'Loading live feed…' : term ? 'No pools match' : tab === 'active' ? 'No live pools right now' : 'Nothing here yet';
+  $('eX').textContent = term ? 'Try another institute, wing, host or brand.' : tab === 'active' ? 'Be the first to start a pool. It will appear instantly for everyone.' : 'Locked pools appear here and delete themselves after 12 hours.';
   const sel = $('jPool'), prev = sel.value;
-  sel.innerHTML = act.length ? act.map(p => `<option value="${p.id}">${esc(PL[p.platform].n)} · ${esc(p.wing)} · ${esc(p.host)}</option>`).join('') : '<option value="">No active pools</option>';
+  sel.innerHTML = act.length ? act.map(p => `<option value="${p.id}">${esc(PL[p.platform].n)} · ${esc(p.wing)}${p.inst ? ' · ' + esc(p.inst) : ''} · ${esc(p.host)}</option>`).join('') : '<option value="">No live pools</option>';
   if (act.some(p => p.id === prev)) sel.value = prev;
   ['jPool','jName','jPhone','jItem','jPrice','jBtn'].forEach(i => $(i).disabled = !act.length);
   document.querySelectorAll('[data-qr]').forEach(el => { el.innerHTML = ''; if (typeof QRCode === 'undefined') { el.textContent = 'QR offline'; el.style.fontSize = '10px'; return; } new QRCode(el, {text: el.dataset.qr, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M}); });
   if (keep) { const f = document.querySelector(`[data-form][data-id="${keep.f}"] [name="${keep.n}"]`); if (f) f.focus(); }
 }
 
-$('cPhone').addEventListener('input', e => e.target.setCustomValidity(''));
-$('autofill').onclick = () => { const p = prof(); [['cHost','name'],['cPhone','phone'],['cUpi','upi']].forEach(([i,k]) => { if (p[k]) $(i).value = p[k]; }); };
-$('fCreate').addEventListener('submit', e => {
-  e.preventDefault(); const err = $('cErr'), digits = clean($('cPhone').value);
+$('autofill').onclick = () => { const p = prof(); [['cHost','name'],['cPhone','phone'],['cUpi','upi'],['cInst','inst']].forEach(([i,k]) => { if (p[k]) $(i).value = p[k]; }); };
+
+// ===== Global broadcaster =====
+function launchPool(){
+  const err = $('cErr'), digits = clean($('cPhone').value);
   err.classList.add('hidden');
-  if (!okPhone(digits)) { err.textContent = 'Enter a valid 10-digit Indian mobile number.'; err.classList.remove('hidden'); return; }
+  const bad = m => { err.textContent = m; err.classList.remove('hidden'); };
+  if (!okPhone(digits)) return bad('Enter a valid 10-digit Indian mobile number.');
   const upiId = $('cUpi').value.trim();
-  if (!/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(upiId)) { err.textContent = 'Enter a valid UPI ID, like name@bank.'; err.classList.remove('hidden'); return; }
-  busy(e.submitter, 'Launching…', () => {
-    const host = $('cHost').value.trim();
-    const p = {id: uid('pool_'), platform: $('cPlat').value, wing: $('cWing').value.trim(), host, phone: digits, upi: upiId, fee: parseFloat($('cFee').value) || 0, thr: parseFloat($('cThr').value) || 0,
-      closesAt: nextTime($('cTime').value), closed: false, lockedAt: null, mode: 'proportional', createdAt: NOW(), parts: [{pid: uid('m_'), name: host, phone: digits, host: true, owner: DEV, items: []}]};
-    wr(K.F, {name: host, phone: digits, upi: upiId});
-    pools.unshift(p); sess[p.id] = host; tab = 'active'; e.target.reset(); save(); render(); toast('Pool launched');
-  });
-});
+  if (!/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(upiId)) return bad('Enter a valid UPI ID, like name@bank.');
+  const host = $('cHost').value.trim(), inst = $('cInst').value.trim(), poolId = uid('pool_');
+  const pid = uid('m_');
+  const poolData = {id: poolId, platform: $('cPlat').value, wing: $('cWing').value.trim(), inst, host, phone: digits, upi: upiId,
+    fee: parseFloat($('cFee').value) || 0, thr: parseFloat($('cThr').value) || 0, closesAt: nextTime($('cTime').value),
+    closed: false, lockedAt: null, mode: 'proportional', createdAt: NOW(),
+    parts: {[pid]: {pid, name: host, phone: digits, host: true, owner: DEV}}};
+  wr(K.F, {name: host, phone: digits, upi: upiId, inst});
+  sess[poolId] = host; saveSess(); tab = 'active';
+  database.ref('public_pools/' + poolId).set(poolData).then(() => { $('fCreate').reset(); $('autofill').click(); toast('Pool is live for everyone'); }).catch(fail);
+}
+$('fCreate').addEventListener('submit', e => { e.preventDefault(); busy(e.submitter, 'Launching…', launchPool); });
+
 $('fJoin').addEventListener('submit', e => {
-  e.preventDefault(); const err = $('jErr'), fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+  e.preventDefault(); const err = $('jErr'), bad = m => { err.textContent = m; err.classList.remove('hidden'); };
   err.classList.add('hidden');
-  const p = find($('jPool').value); if (!p) return fail('Pick an active pool.');
-  if (closed(p)) { lock(p); return fail('That pool just locked.'); }
+  const p = find($('jPool').value); if (!p) return bad('Pick a live pool.');
+  if (closed(p)) return bad('That pool just locked.');
   const name = $('jName').value.trim(), d = clean($('jPhone').value), item = $('jItem').value.trim(), price = parseFloat($('jPrice').value);
-  if (same(name, p.host)) return fail('That name belongs to the host. Add host items from the pool card.');
-  if (!okPhone(d)) return fail('Enter a valid 10-digit Indian mobile number.');
-  if (!item || isNaN(price) || price < 0) return fail('Enter an item and a valid price.');
+  if (same(name, p.host)) return bad('That name belongs to the host. Add host items from the pool card.');
+  if (!okPhone(d)) return bad('Enter a valid 10-digit Indian mobile number.');
+  if (!item || isNaN(price) || price < 0) return bad('Enter an item and a valid price.');
   busy(e.submitter, 'Adding…', () => {
-    const q = find(p.id); if (!q) return fail('That pool was deleted.');
-    if (closed(q)) { lock(q); return fail('That pool just locked.'); }
-    const pt = claim(q, name, d); if (typeof pt === 'string') return fail(pt);
-    pt.items.push({id: uid('i_'), name: item, price: Math.round(price*100)/100});
-    sess[q.id] = pt.name; $('jItem').value = ''; $('jPrice').value = ''; save(); render(); toast(pt.name + ' added to pool');
+    const pt = claim(p, name, d); if (typeof pt === 'string') return bad(pt);
+    addItem(p, pt, item, price); sess[p.id] = pt.name; saveSess();
+    $('jItem').value = ''; $('jPrice').value = ''; render(); toast(pt.name + ' added to pool');
   });
 });
 $('board').addEventListener('submit', e => {
   const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault();
   const p = find(f.dataset.id); if (!p) return;
-  if (closed(p)) { lock(p); return toast('Pool is locked'); }
+  if (closed(p)) return toast('Pool is locked');
   if (f.dataset.form === 'join') {
     const name = f.member.value.trim(); if (!name) return;
     const pt = claim(p, name); if (typeof pt === 'string') return toast(pt);
-    sess[p.id] = pt.name; save(); render(); toast('Joined as ' + pt.name);
+    sess[p.id] = pt.name; saveSess(); render(); toast('Joined as ' + pt.name);
   } else {
     const me = meOf(p); if (!me) return toast('Verify your name first');
     const price = parseFloat(f.price.value), name = f.item.value.trim();
     if (!name || isNaN(price) || price < 0) return;
-    me.items.push({id: uid('i_'), name, price: Math.round(price*100)/100}); save(); render();
+    addItem(p, me, name, price);
   }
 });
 $('board').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return; const p = find(b.dataset.id), a = b.dataset.act; if (!p) return;
   if (a === 'wa') return waGroup(p);
   if (a === 'wa1') return waOne(p, b.dataset.n);
-  if (a === 'leave') { delete sess[p.id]; save(); return render(); }
-  if (a === 'mode') { if (meOf(p) && !closed(p)) { p.mode = b.dataset.m; save(); render(); } return; }
-  if (a === 'rm') { const me = meOf(p); if (me && !closed(p)) { me.items = me.items.filter(i => i.id !== b.dataset.i); save(); render(); } return; }
+  if (a === 'inv') return waInvite(p);
+  if (a === 'leave') { delete sess[p.id]; saveSess(); return render(); }
+  if (a === 'mode') { if (meOf(p) && !closed(p)) ref(p.id + '/mode').set(b.dataset.m).catch(fail); return; }
+  if (a === 'rm') { const me = meOf(p); if (me && me.pid === b.dataset.pid && !closed(p)) ref(`${p.id}/parts/${me.pid}/items/${b.dataset.i}`).remove().catch(fail); return; }
   if (!isHost(p)) return toast('Only the host can do that');
-  if (a === 'lock' && !p.closed) lock(p);
-  if (a === 'ext' && !closed(p)) { p.closesAt += 600000; save(); render(); toast('Extended by 10 minutes'); }
-  if (a === 'del' && confirm('Delete this pool and all its items? This cannot be undone.')) { pools = pools.filter(x => x.id !== p.id); delete sess[p.id]; save(); render(); toast('Pool deleted'); }
+  if (a === 'lock') lock(p, true);
+  if (a === 'ext' && !closed(p)) { ref(p.id + '/closesAt').transaction(v => (v || p.closesAt) + 600000); toast('Extended by 10 minutes'); }
+  if (a === 'del' && confirm('Delete this pool and all its items? This cannot be undone.')) { delete sess[p.id]; saveSess(); ref(p.id).remove().catch(fail); toast('Pool deleted'); }
 });
 document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
 $('q').addEventListener('input', render);
 
-function closePay(){
-  $('payModal').classList.add('hidden'); document.body.style.overflow = '';
-  try { history.replaceState(null, '', window.location.pathname); } catch(e){}
-}
+function closePay(){ $('payModal').classList.add('hidden'); document.body.style.overflow = ''; try { history.replaceState(null, '', window.location.pathname); } catch(e){} }
 function openPay(host, upiId, amt){
   const uri = upiStr(upiId, host, amt);
   $('pmHost').textContent = host; $('pmAmt').textContent = '₹' + amt; $('pmUpi').textContent = upiId;
   $('pmLaunch').setAttribute('href', uri);
   const qr = $('pmQr'); qr.innerHTML = '';
-  if (typeof QRCode === 'undefined') { qr.innerHTML = '<span class="text-xs text-slate-700 text-center px-3">QR unavailable offline. Use the button below.</span>'; }
+  if (typeof QRCode === 'undefined') qr.innerHTML = '<span class="text-xs text-slate-700 text-center px-3">QR unavailable offline. Use the button below.</span>';
   else new QRCode(qr, {text: uri, width: 480, height: 480, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M});
-  $('payModal').classList.remove('hidden'); document.body.style.overflow = 'hidden';
-  $('pmLaunch').focus();
+  $('payModal').classList.remove('hidden'); document.body.style.overflow = 'hidden'; $('pmLaunch').focus();
 }
 function copyUpi(){
   const v = $('pmUpi').textContent, done = () => toast('UPI ID copied');
-  const fallback = () => { const t = document.createElement('textarea'); t.value = v; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch(e){ toast('Copy failed. Long-press the UPI ID.'); } t.remove(); };
-  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(v).then(done, fallback); else fallback();
+  const fb = () => { const t = document.createElement('textarea'); t.value = v; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); done(); } catch(e){ toast('Copy failed. Long-press the UPI ID.'); } t.remove(); };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(v).then(done, fb); else fb();
 }
-$('pmClose').onclick = closePay;
-$('pmCopy').onclick = copyUpi;
+$('pmClose').onclick = closePay; $('pmCopy').onclick = copyUpi;
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('payModal').classList.contains('hidden')) closePay(); });
 function checkPayParams(){
   const q = new URLSearchParams(window.location.search);
   if (q.get('pay') !== 'true') return;
   const host = (q.get('host') || '').trim().slice(0, 40), upiId = (q.get('upi') || '').trim(), amt = (q.get('amt') || '').trim();
-  const validUpi = /^[\w.\-]{2,}@[\w.\-]{2,}$/.test(upiId), n = parseFloat(amt);
-  if (!host || !validUpi || !/^\d+(\.\d{1,2})?$/.test(amt) || !(n > 0)) { toast('Invalid payment link'); return; }
+  const n = parseFloat(amt);
+  if (!host || !/^[\w.\-]{2,}@[\w.\-]{2,}$/.test(upiId) || !/^\d+(\.\d{1,2})?$/.test(amt) || !(n > 0)) return toast('Invalid payment link');
   openPay(host, upiId, n.toFixed(2));
 }
 
-function purge(){
-  if (!ready) return;
-  const now = NOW(), n = pools.length;
-  pools = pools.filter(p => now < delAt(p));
-  Object.keys(sess).forEach(id => { if (!find(id)) delete sess[id]; });
-  if (pools.length !== n) { save(); render(); }
-}
-// Timer loop: runs always, reads server-adjusted time, never waits on the connection
+// Timers, auto-lock and auto-delete (idempotent writes, safe if several devices run them)
 function tick(){
+  if (!ready) return;
   const now = NOW();
-  [...pools].forEach(p => {
-    if (!p.closed && now >= p.closesAt) { lock(p); return; }
-    const t = document.querySelector(`[data-t="${p.id}"]`); if (t && !p.closed) t.textContent = fmt(p.closesAt - now);
+  pools.forEach(p => {
+    if (!p.closed && now >= p.closesAt && !busyIds['l' + p.id]) { busyIds['l' + p.id] = 1; lock(p); }
+    if (now >= delAt(p) && (p.closed || now >= p.closesAt) && !busyIds['d' + p.id]) { busyIds['d' + p.id] = 1; ref(p.id).remove(); return; }
+    const t = document.querySelector(`[data-t="${p.id}"]`); if (t && !p.closed && now < p.closesAt) t.textContent = fmt(p.closesAt - now);
     const d = document.querySelector(`[data-del="${p.id}"]`); if (d) d.textContent = fmt(delAt(p) - now);
   });
-  purge();
   if (pend && !typing()) { pend = false; render(); }
 }
 setInterval(tick, 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
-$('autofill').click(); render();
-checkPayParams();
+$('autofill').click(); render(); initLiveFeed(); checkPayParams();
 })();
 </script>
 </body>
