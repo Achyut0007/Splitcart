@@ -141,7 +141,6 @@ const database = firebase.database();
 </script>
 <script>
 (() => {
-// Pools live in the cloud; session claims, profile and device id stay on this device.
 const K = {S:'splitcart_sessions_v6', F:'splitcart_profile_v6', D:'splitcart_device_v6'};
 const DEL_AFTER = 12*3600*1000, UPI_NOTE = 'SplitCartHostel';
 const PL = {blinkit:{n:'Blinkit',u:'https://blinkit.com',b:'#f8cb46',i:'#1a1a1a'}, swiggy:{n:'Swiggy',u:'https://www.swiggy.com',b:'#fc8019',i:'#fff'}, zomato:{n:'Zomato',u:'https://www.zomato.com',b:'#e23744',i:'#fff'}};
@@ -157,12 +156,16 @@ const initials = n => n.trim().split(/\s+/).slice(0,2).map(w => (w[0]||'').toUpp
 const pad = x => String(x).padStart(2,'0');
 const fmt = ms => { const s = Math.max(0, Math.floor(ms/1000)); return pad(Math.floor(s/3600)) + ':' + pad(Math.floor(s%3600/60)) + ':' + pad(s%60); };
 
+// Server clock: every device measures time against Firebase's clock, so timers agree everywhere
+let OFF = 0;
+const NOW = () => Date.now() + OFF;
+database.ref('.info/serverTimeOffset').on('value', s => { OFF = s.val() || 0; tick(); });
+
 let DEV = rd(K.D, null); if (!DEV) { DEV = uid('dev_'); wr(K.D, DEV); }
 let pools = [], sess = rd(K.S, {}), tab = 'active', ready = false, pend = false, synced = {};
 if (!sess || typeof sess !== 'object') sess = {};
 let dl = new URLSearchParams(window.location.search).get('poolId');
 
-// ---- Cloud sync: diff local pools against last-synced snapshot, write only what changed ----
 function save(){
   wr(K.S, sess);
   const ops = [], ids = new Set(pools.map(p => p.id));
@@ -170,20 +173,20 @@ function save(){
   Object.keys(synced).forEach(id => { if (!ids.has(id)) { delete synced[id]; ops.push(() => database.ref('pools/' + id).remove()); } });
   ops.forEach(f => f());
 }
-// Firebase drops empty arrays / nulls, so restore the shape the UI expects
 function norm(p){
   p.parts = Object.values(p.parts || {}).map(x => ({...x, items: Object.values(x.items || {})}));
   p.closed = !!p.closed; return p;
 }
 const typing = () => { const a = document.activeElement; return !!(a && a.tagName === 'INPUT' && a.closest('#board') && a.value); };
+// Realtime listener: any change from any device re-renders instantly
 database.ref('pools').on('value', snap => {
   pools = Object.values(snap.val() || {}).filter(p => p && p.id).map(norm).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
   synced = {}; pools.forEach(p => synced[p.id] = JSON.stringify(p));
   ready = true; setCloud(true); purge();
   if (typing()) pend = true; else render();
   deepLink();
-}, () => { setCloud(false); toast('Cloud connection error'); });
-database.ref('.info/connected').on('value', s => { if (ready) setCloud(!!s.val()); });
+}, err => { setCloud(false); toast(err && err.code === 'PERMISSION_DENIED' ? 'Database rules are blocking access' : 'Cloud connection error'); });
+database.ref('.info/connected').on('value', s => setCloud(!!s.val()));
 function setCloud(on){ const c = $('cloud'); c.textContent = on ? '● Live cloud sync' : '● Offline'; c.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ' + (on ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-red-300 bg-red-500/10 border-red-500/25'); }
 const poolLink = p => window.location.origin + window.location.pathname + '?poolId=' + p.id;
 function deepLink(){
@@ -197,7 +200,7 @@ function deepLink(){
 }
 
 const prof = () => rd(K.F, {});
-const closed = p => p.closed || Date.now() >= p.closesAt;
+const closed = p => p.closed || NOW() >= p.closesAt;
 const find = id => pools.find(p => p.id === id);
 const delAt = p => (p.lockedAt || p.closesAt) + DEL_AFTER;
 const meOf = p => { const n = sess[p.id]; return n ? p.parts.find(x => x.name === n && x.owner === DEV) : null; };
@@ -206,8 +209,8 @@ const total = pt => pt.items.reduce((s,i) => s + paise(i.price), 0);
 
 let tt; function toast(m){ const t = $('toast'); t.textContent = m; t.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(() => t.classList.add('hidden'), 2600); }
 function busy(btn, label, fn){ const h = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span>' + label; setTimeout(() => { fn(); btn.disabled = false; btn.innerHTML = h; }, 350); }
-function lock(p){ if (p.closed) return; p.closed = true; p.lockedAt = Date.now(); save(); render(); }
-function nextTime(hhmm){ const [h,m] = hhmm.split(':').map(Number), d = new Date(); d.setHours(h,m,0,0); if (d <= Date.now()) d.setDate(d.getDate()+1); return d.getTime(); }
+function lock(p){ if (p.closed) return; p.closed = true; p.lockedAt = NOW(); save(); render(); }
+function nextTime(hhmm){ const [h,m] = hhmm.split(':').map(Number), d = new Date(NOW()); d.setHours(h,m,0,0); if (d.getTime() <= NOW()) d.setDate(d.getDate()+1); return d.getTime(); }
 
 function claim(p, name, phone){
   const ex = p.parts.find(x => same(x.name, name));
@@ -215,7 +218,6 @@ function claim(p, name, phone){
   const pt = {pid: uid('m_'), name, phone: phone || '', host: false, owner: DEV, items: []}; p.parts.push(pt); return pt;
 }
 
-// ---- Split engine (integer paise) ----
 function split(p){
   const ms = p.parts.map(x => ({name:x.name, sub: total(x)})).filter(m => m.sub > 0);
   const grand = ms.reduce((s,m) => s + m.sub, 0), thr = paise(p.thr), waived = thr > 0 && grand >= thr;
@@ -231,7 +233,6 @@ const upiStr = (upiId, host, amt) => `upi://pay?pa=${upiId}&pn=${encodeURICompon
 const upi = (p, x) => upiStr(p.upi, p.host, (x/100).toFixed(2));
 const hubLink = (p, x) => `${window.location.origin + window.location.pathname}?pay=true&host=${encodeURIComponent(p.host)}&upi=${encodeURIComponent(p.upi)}&amt=${encodeURIComponent((x/100).toFixed(2))}`;
 
-// ---- WhatsApp ----
 function memberMsg(p, r){
   return `*${r.name}* owes *${money(r.tot)}* to ${p.host} for the ${PL[p.platform].n} order (${p.wing}).\n👉 Pay now: ${hubLink(p, r.tot)}`;
 }
@@ -246,7 +247,6 @@ function waOne(p, name){
   window.open(`https://wa.me/${num}?text=` + encodeURIComponent('⚡ SplitCart\n' + memberMsg(p, r) + '\n🔗 Live pool: ' + poolLink(p)), '_blank', 'noopener');
 }
 
-// ---- Render ----
 function card(p){
   const P = PL[p.platform], cl = closed(p), me = meOf(p), host = isHost(p);
   const thr = paise(p.thr), grand = p.parts.reduce((s,x) => s + total(x), 0);
@@ -266,7 +266,7 @@ function card(p){
     : `<div class="wp inline-block mt-2 text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-full">Add ${money(Math.max(0, thr-grand))} more to waive the delivery fee</div>`;
 
   let action;
-  if (cl) action = `<div class="mt-4 rounded-lg bg-red-500/10 border border-red-500/25 px-3 py-2 text-xs text-red-300">🔒 Pool locked. Auto-deletes in <b class="mono" data-del="${p.id}">${fmt(delAt(p)-Date.now())}</b></div>`;
+  if (cl) action = `<div class="mt-4 rounded-lg bg-red-500/10 border border-red-500/25 px-3 py-2 text-xs text-red-300">🔒 Pool locked. Auto-deletes in <b class="mono" data-del="${p.id}">${fmt(delAt(p)-NOW())}</b></div>`;
   else if (!me) action = `<form data-form="join" data-id="${p.id}" class="mt-4 grid grid-cols-[1fr_auto] gap-2"><input required name="member" maxlength="30" value="${esc(prof().name||'')}" placeholder="Type your name to join" class="inp" aria-label="Your name"><button class="btn pri">Join</button></form>`;
   else action = `<form data-form="item" data-id="${p.id}" class="mt-4"><div class="flex justify-between items-center mb-2"><span class="text-[11px] text-emerald-300">✔ Verified as ${esc(me.name)}. Only you can order under this name.</span><button type="button" data-act="leave" data-id="${p.id}" class="text-[11px] text-slate-500 hover:text-slate-300">Switch</button></div>
     <div class="grid grid-cols-[1fr_88px_auto] gap-2"><input required name="item" maxlength="40" placeholder="Item" class="inp" aria-label="Item"><input required name="price" type="number" min="0" step="0.01" placeholder="₹" class="inp mono" aria-label="Price"><button class="btn">Add</button></div></form>`;
@@ -276,7 +276,7 @@ function card(p){
     <span class="text-[11px] text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded-full">${esc(p.wing)}</span>
     <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ${cl ? 'text-red-300 bg-red-500/10 border-red-500/30' : 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'}">${cl ? 'Locked' : 'Open'}</span></div>
     <p class="text-[11px] text-slate-500 mt-1">Host: <span class="text-slate-300">${esc(p.host)}</span> · closes ${new Date(p.closesAt).toLocaleString([], {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</p></div>
-    <div class="text-right shrink-0"><p class="text-[10px] text-slate-500">${cl ? 'Status' : 'Time left'}</p><p data-t="${p.id}" class="mono text-lg font-semibold ${cl ? 'text-red-400' : 'text-emerald-300'}">${cl ? 'LOCKED' : fmt(p.closesAt-Date.now())}</p></div></div>
+    <div class="text-right shrink-0"><p class="text-[10px] text-slate-500">${cl ? 'Status' : 'Time left'}</p><p data-t="${p.id}" class="mono text-lg font-semibold ${cl ? 'text-red-400' : 'text-emerald-300'}">${cl ? 'LOCKED' : fmt(p.closesAt-NOW())}</p></div></div>
    <div class="mt-4 rounded-xl bg-white/[0.03] border border-white/[0.07] p-3">${contact}</div>
    <div class="mt-4"><div class="flex justify-between text-[11px] mb-1.5 gap-2"><span class="text-slate-400">${money(grand)} of ${money(thr)} free-delivery target</span><span class="mono ${ok ? 'text-emerald-400' : 'text-slate-400'}">${pct.toFixed(0)}%</span></div>
     <div class="w-full h-2.5 rounded-full track overflow-hidden"><div class="h-full rounded-full fill" style="width:${pct.toFixed(1)}%"></div></div>${badge}</div>
@@ -325,7 +325,6 @@ function render(){
   if (keep) { const f = document.querySelector(`[data-form][data-id="${keep.f}"] [name="${keep.n}"]`); if (f) f.focus(); }
 }
 
-// ---- Forms ----
 $('cPhone').addEventListener('input', e => e.target.setCustomValidity(''));
 $('autofill').onclick = () => { const p = prof(); [['cHost','name'],['cPhone','phone'],['cUpi','upi']].forEach(([i,k]) => { if (p[k]) $(i).value = p[k]; }); };
 $('fCreate').addEventListener('submit', e => {
@@ -337,7 +336,7 @@ $('fCreate').addEventListener('submit', e => {
   busy(e.submitter, 'Launching…', () => {
     const host = $('cHost').value.trim();
     const p = {id: uid('pool_'), platform: $('cPlat').value, wing: $('cWing').value.trim(), host, phone: digits, upi: upiId, fee: parseFloat($('cFee').value) || 0, thr: parseFloat($('cThr').value) || 0,
-      closesAt: nextTime($('cTime').value), closed: false, lockedAt: null, mode: 'proportional', createdAt: Date.now(), parts: [{pid: uid('m_'), name: host, phone: digits, host: true, owner: DEV, items: []}]};
+      closesAt: nextTime($('cTime').value), closed: false, lockedAt: null, mode: 'proportional', createdAt: NOW(), parts: [{pid: uid('m_'), name: host, phone: digits, host: true, owner: DEV, items: []}]};
     wr(K.F, {name: host, phone: digits, upi: upiId});
     pools.unshift(p); sess[p.id] = host; tab = 'active'; e.target.reset(); save(); render(); toast('Pool launched');
   });
@@ -389,7 +388,6 @@ $('board').addEventListener('click', e => {
 document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
 $('q').addEventListener('input', render);
 
-// ---- Payment Hub ----
 function closePay(){
   $('payModal').classList.add('hidden'); document.body.style.overflow = '';
   try { history.replaceState(null, '', window.location.pathname); } catch(e){}
@@ -421,17 +419,16 @@ function checkPayParams(){
   openPay(host, upiId, n.toFixed(2));
 }
 
-// ---- Ticker + 12h auto-delete (waits for first cloud snapshot) ----
 function purge(){
   if (!ready) return;
-  const now = Date.now(), n = pools.length;
+  const now = NOW(), n = pools.length;
   pools = pools.filter(p => now < delAt(p));
   Object.keys(sess).forEach(id => { if (!find(id)) delete sess[id]; });
   if (pools.length !== n) { save(); render(); }
 }
-setInterval(() => {
-  if (!ready) return;
-  const now = Date.now();
+// Timer loop: runs always, reads server-adjusted time, never waits on the connection
+function tick(){
+  const now = NOW();
   [...pools].forEach(p => {
     if (!p.closed && now >= p.closesAt) { lock(p); return; }
     const t = document.querySelector(`[data-t="${p.id}"]`); if (t && !p.closed) t.textContent = fmt(p.closesAt - now);
@@ -439,9 +436,10 @@ setInterval(() => {
   });
   purge();
   if (pend && !typing()) { pend = false; render(); }
-}, 1000);
+}
+setInterval(tick, 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
-// ---- Boot ----
 $('autofill').click(); render();
 checkPayParams();
 })();
