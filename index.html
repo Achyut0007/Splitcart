@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SplitCart — Hostel Group Order Coordinator</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -45,7 +47,7 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
  <div class="max-w-[1500px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
   <div class="flex items-center gap-2.5"><div class="w-9 h-9 rounded-xl pri flex items-center justify-center text-white font-bold text-sm">SC</div>
    <div><h1 class="font-bold text-lg leading-tight text-white">SplitCart</h1><p class="text-[11px] text-slate-500 leading-tight">Hostel delivery coordinator</p></div></div>
-  <div class="flex items-center gap-2"><span class="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-full">● Auto-saved</span>
+  <div class="flex items-center gap-2"><span id="cloud" class="hidden sm:inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 rounded-full">● Connecting…</span>
    <span id="count" class="text-xs text-slate-400 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full mono">0 pools</span></div>
  </div>
 </nav>
@@ -104,7 +106,6 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
 </div>
 <div id="toast" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 hidden glass neon rounded-full px-4 py-2 text-sm text-white max-w-[92vw]" role="status"></div>
 
-<!-- Payment Hub modal (opens automatically from ?pay=true links) -->
 <div id="payModal" class="hidden fixed inset-0 z-[60] pay-ov overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="pmTitle">
  <div class="min-h-full flex items-center justify-center p-4">
   <div class="pay-card w-full max-w-sm rounded-3xl p-5 sm:p-6 fi">
@@ -125,8 +126,23 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
 </div>
 
 <script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDq7ylukb9O8EA9jJo_GIGk-mgsegenGhw",
+  authDomain: "splitcart-cf946.firebaseapp.com",
+  databaseURL: "https://splitcart-cf946-default-rtdb.firebaseio.com",
+  projectId: "splitcart-cf946",
+  storageBucket: "splitcart-cf946.firebasestorage.app",
+  messagingSenderId: "909529328024",
+  appId: "1:909529328024:web:e14d6cf4bc0e25ad0de3ed",
+  measurementId: "G-21W2B5NSJ2"
+};
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+</script>
+<script>
 (() => {
-const K = {P:'splitcart_pools_v6', S:'splitcart_sessions_v6', F:'splitcart_profile_v6', D:'splitcart_device_v6'};
+// Pools live in the cloud; session claims, profile and device id stay on this device.
+const K = {S:'splitcart_sessions_v6', F:'splitcart_profile_v6', D:'splitcart_device_v6'};
 const DEL_AFTER = 12*3600*1000, UPI_NOTE = 'SplitCartHostel';
 const PL = {blinkit:{n:'Blinkit',u:'https://blinkit.com',b:'#f8cb46',i:'#1a1a1a'}, swiggy:{n:'Swiggy',u:'https://www.swiggy.com',b:'#fc8019',i:'#fff'}, zomato:{n:'Zomato',u:'https://www.zomato.com',b:'#e23744',i:'#fff'}};
 const $ = id => document.getElementById(id);
@@ -142,9 +158,44 @@ const pad = x => String(x).padStart(2,'0');
 const fmt = ms => { const s = Math.max(0, Math.floor(ms/1000)); return pad(Math.floor(s/3600)) + ':' + pad(Math.floor(s%3600/60)) + ':' + pad(s%60); };
 
 let DEV = rd(K.D, null); if (!DEV) { DEV = uid('dev_'); wr(K.D, DEV); }
-let pools = rd(K.P, []), sess = rd(K.S, {}), tab = 'active';
-if (!Array.isArray(pools)) pools = []; if (!sess || typeof sess !== 'object') sess = {};
-const save = () => { wr(K.P, pools); wr(K.S, sess); };
+let pools = [], sess = rd(K.S, {}), tab = 'active', ready = false, pend = false, synced = {};
+if (!sess || typeof sess !== 'object') sess = {};
+let dl = new URLSearchParams(window.location.search).get('poolId');
+
+// ---- Cloud sync: diff local pools against last-synced snapshot, write only what changed ----
+function save(){
+  wr(K.S, sess);
+  const ops = [], ids = new Set(pools.map(p => p.id));
+  pools.forEach(p => { const j = JSON.stringify(p); if (synced[p.id] !== j) { synced[p.id] = j; ops.push(() => database.ref('pools/' + p.id).set(JSON.parse(j)).catch(() => toast('Cloud sync failed. Check your connection.'))); } });
+  Object.keys(synced).forEach(id => { if (!ids.has(id)) { delete synced[id]; ops.push(() => database.ref('pools/' + id).remove()); } });
+  ops.forEach(f => f());
+}
+// Firebase drops empty arrays / nulls, so restore the shape the UI expects
+function norm(p){
+  p.parts = Object.values(p.parts || {}).map(x => ({...x, items: Object.values(x.items || {})}));
+  p.closed = !!p.closed; return p;
+}
+const typing = () => { const a = document.activeElement; return !!(a && a.tagName === 'INPUT' && a.closest('#board') && a.value); };
+database.ref('pools').on('value', snap => {
+  pools = Object.values(snap.val() || {}).filter(p => p && p.id).map(norm).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+  synced = {}; pools.forEach(p => synced[p.id] = JSON.stringify(p));
+  ready = true; setCloud(true); purge();
+  if (typing()) pend = true; else render();
+  deepLink();
+}, () => { setCloud(false); toast('Cloud connection error'); });
+database.ref('.info/connected').on('value', s => { if (ready) setCloud(!!s.val()); });
+function setCloud(on){ const c = $('cloud'); c.textContent = on ? '● Live cloud sync' : '● Offline'; c.className = 'hidden sm:inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ' + (on ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-red-300 bg-red-500/10 border-red-500/25'); }
+const poolLink = p => window.location.origin + window.location.pathname + '?poolId=' + p.id;
+function deepLink(){
+  if (!dl || !ready) return;
+  const p = find(dl); dl = null;
+  if (!p) return toast('Pool not found or already expired');
+  tab = closed(p) ? 'archive' : 'active'; $('q').value = ''; render();
+  if (!closed(p)) $('jPool').value = p.id;
+  const el = document.querySelector(`article[data-id="${p.id}"]`);
+  if (el) { el.scrollIntoView({behavior:'smooth', block:'center'}); el.style.outline = '2px solid #34d399'; }
+}
+
 const prof = () => rd(K.F, {});
 const closed = p => p.closed || Date.now() >= p.closesAt;
 const find = id => pools.find(p => p.id === id);
@@ -158,13 +209,11 @@ function busy(btn, label, fn){ const h = btn.innerHTML; btn.disabled = true; btn
 function lock(p){ if (p.closed) return; p.closed = true; p.lockedAt = Date.now(); save(); render(); }
 function nextTime(hhmm){ const [h,m] = hhmm.split(':').map(Number), d = new Date(); d.setHours(h,m,0,0); if (d <= Date.now()) d.setDate(d.getDate()+1); return d.getTime(); }
 
-// Claim a name in a pool for this device. Returns participant or an error string.
 function claim(p, name, phone){
-  const ex = p.parts.find(x => sameName(x.name, name));
+  const ex = p.parts.find(x => same(x.name, name));
   if (ex) { if (ex.owner !== DEV) return 'The name "' + ex.name + '" is already claimed by another user in this pool.'; if (phone) ex.phone = phone; return ex; }
   const pt = {pid: uid('m_'), name, phone: phone || '', host: false, owner: DEV, items: []}; p.parts.push(pt); return pt;
 }
-function sameName(a,b){ return same(a,b); }
 
 // ---- Split engine (integer paise) ----
 function split(p){
@@ -178,11 +227,8 @@ function split(p){
   rows.forEach(r => r.tot = r.sub + r.fs); rows.sort((a,b) => b.tot - a.tot);
   return {grand, waived, fee, total: grand + fee, rows};
 }
-// Native UPI deep link string: pa = host UPI ID, pn = host name, am = exact amount (INR)
 const upiStr = (upiId, host, amt) => `upi://pay?pa=${upiId}&pn=${encodeURIComponent(host)}&am=${amt}&cu=INR&tn=${UPI_NOTE}`;
 const upi = (p, x) => upiStr(p.upi, p.host, (x/100).toFixed(2));
-
-// Payment Hub link: points back to this app's own hosting location with payment query params.
 const hubLink = (p, x) => `${window.location.origin + window.location.pathname}?pay=true&host=${encodeURIComponent(p.host)}&upi=${encodeURIComponent(p.upi)}&amt=${encodeURIComponent((x/100).toFixed(2))}`;
 
 // ---- WhatsApp ----
@@ -191,13 +237,13 @@ function memberMsg(p, r){
 }
 function waGroup(p){
   const s = split(p), rows = s.rows.filter(r => r.name !== p.host && r.tot > 0);
-  const msg = `⚡ *SplitCart* — ${PL[p.platform].n} order for ${p.wing} is locked. ${p.host} placed it.\nCart total: ${money(s.total)}${s.waived ? ' (delivery free)' : ''}\n\n` + (rows.length ? rows.map(r => memberMsg(p, r)).join('\n\n') : 'Nobody else owes anything.');
+  const msg = `⚡ *SplitCart* — ${PL[p.platform].n} order for ${p.wing} is locked. ${p.host} placed it.\nCart total: ${money(s.total)}${s.waived ? ' (delivery free)' : ''}\n🔗 Live pool: ${poolLink(p)}\n\n` + (rows.length ? rows.map(r => memberMsg(p, r)).join('\n\n') : 'Nobody else owes anything.');
   window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
 }
 function waOne(p, name){
   const r = split(p).rows.find(x => x.name === name); if (!r) return;
   const pt = p.parts.find(x => x.name === name), num = pt && pt.phone ? '91' + pt.phone : '';
-  window.open(`https://wa.me/${num}?text=` + encodeURIComponent('⚡ SplitCart\n' + memberMsg(p, r)), '_blank', 'noopener');
+  window.open(`https://wa.me/${num}?text=` + encodeURIComponent('⚡ SplitCart\n' + memberMsg(p, r) + '\n🔗 Live pool: ' + poolLink(p)), '_blank', 'noopener');
 }
 
 // ---- Render ----
@@ -305,10 +351,12 @@ $('fJoin').addEventListener('submit', e => {
   if (same(name, p.host)) return fail('That name belongs to the host. Add host items from the pool card.');
   if (!okPhone(d)) return fail('Enter a valid 10-digit Indian mobile number.');
   if (!item || isNaN(price) || price < 0) return fail('Enter an item and a valid price.');
-  const pt = claim(p, name, d); if (typeof pt === 'string') return fail(pt);
   busy(e.submitter, 'Adding…', () => {
+    const q = find(p.id); if (!q) return fail('That pool was deleted.');
+    if (closed(q)) { lock(q); return fail('That pool just locked.'); }
+    const pt = claim(q, name, d); if (typeof pt === 'string') return fail(pt);
     pt.items.push({id: uid('i_'), name: item, price: Math.round(price*100)/100});
-    sess[p.id] = pt.name; $('jItem').value = ''; $('jPrice').value = ''; save(); render(); toast(pt.name + ' added to pool');
+    sess[q.id] = pt.name; $('jItem').value = ''; $('jPrice').value = ''; save(); render(); toast(pt.name + ' added to pool');
   });
 });
 $('board').addEventListener('submit', e => {
@@ -340,18 +388,15 @@ $('board').addEventListener('click', e => {
 });
 document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(); });
 $('q').addEventListener('input', render);
-window.addEventListener('storage', ev => { if (ev.key === K.P) { pools = rd(K.P, []); render(); } });
 
-// ---- Payment Hub: URL parameter listener ----
+// ---- Payment Hub ----
 function closePay(){
   $('payModal').classList.add('hidden'); document.body.style.overflow = '';
   try { history.replaceState(null, '', window.location.pathname); } catch(e){}
 }
 function openPay(host, upiId, amt){
   const uri = upiStr(upiId, host, amt);
-  $('pmHost').textContent = host;
-  $('pmAmt').textContent = '₹' + amt;
-  $('pmUpi').textContent = upiId;
+  $('pmHost').textContent = host; $('pmAmt').textContent = '₹' + amt; $('pmUpi').textContent = upiId;
   $('pmLaunch').setAttribute('href', uri);
   const qr = $('pmQr'); qr.innerHTML = '';
   if (typeof QRCode === 'undefined') { qr.innerHTML = '<span class="text-xs text-slate-700 text-center px-3">QR unavailable offline. Use the button below.</span>'; }
@@ -376,26 +421,28 @@ function checkPayParams(){
   openPay(host, upiId, n.toFixed(2));
 }
 
-// ---- Ticker + 12h auto-delete ----
+// ---- Ticker + 12h auto-delete (waits for first cloud snapshot) ----
 function purge(){
+  if (!ready) return;
   const now = Date.now(), n = pools.length;
   pools = pools.filter(p => now < delAt(p));
   Object.keys(sess).forEach(id => { if (!find(id)) delete sess[id]; });
   if (pools.length !== n) { save(); render(); }
 }
 setInterval(() => {
+  if (!ready) return;
   const now = Date.now();
-  pools.forEach(p => {
+  [...pools].forEach(p => {
     if (!p.closed && now >= p.closesAt) { lock(p); return; }
     const t = document.querySelector(`[data-t="${p.id}"]`); if (t && !p.closed) t.textContent = fmt(p.closesAt - now);
     const d = document.querySelector(`[data-del="${p.id}"]`); if (d) d.textContent = fmt(delAt(p) - now);
   });
   purge();
+  if (pend && !typing()) { pend = false; render(); }
 }, 1000);
 
 // ---- Boot ----
-pools.forEach(p => { if (!p.closed && Date.now() >= p.closesAt) { p.closed = true; p.lockedAt = p.closesAt; } });
-purge(); save(); $('autofill').click(); render();
+$('autofill').click(); render();
 checkPayParams();
 })();
 </script>
