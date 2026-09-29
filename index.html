@@ -49,7 +49,7 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
  <div class="max-w-[1500px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
   <div class="flex items-center gap-2.5"><div class="w-9 h-9 rounded-xl pri flex items-center justify-center text-white font-bold text-sm">SC</div>
    <div><h1 class="font-bold text-lg leading-tight text-white">SplitCart</h1><p class="text-[11px] text-slate-500 leading-tight">Open group-order feed · India</p></div></div>
-  <div class="flex items-center gap-2"><span id="cloud" class="inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 rounded-full">● Connecting…</span>
+  <div class="flex items-center gap-2"><span id="cloud" class="inline-flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1.5 rounded-full">🟡 Connecting…</span>
    <span id="count" class="text-xs text-slate-400 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full mono">0 pools</span></div>
  </div>
 </nav>
@@ -129,6 +129,7 @@ button:disabled,.inp:disabled{opacity:.45;cursor:not-allowed}
 </div>
 
 <script>
+// ===== 1. Firebase initialization (runs first, guarded against double init) =====
 const firebaseConfig = {
   apiKey: "AIzaSyDq7ylukb9O8EA9jJo_GIGk-mgsegenGhw",
   authDomain: "splitcart-cf946.firebaseapp.com",
@@ -139,10 +140,11 @@ const firebaseConfig = {
   appId: "1:909529328024:web:e14d6cf4bc0e25ad0de3ed",
   measurementId: "G-21W2B5NSJ2"
 };
-firebase.initializeApp(firebaseConfig);
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 const database = firebase.database();
-</script>
-<script>
+
 (() => {
 const K = {S:'splitcart_identity_v7', F:'splitcart_profile_v7', D:'splitcart_device_v7'};
 const DEL_AFTER = 12*3600*1000, UPI_NOTE = 'SplitCartHostel';
@@ -166,7 +168,7 @@ const NOW = () => Date.now() + OFF;
 database.ref('.info/serverTimeOffset').on('value', s => { OFF = s.val() || 0; tick(); });
 
 let DEV = rd(K.D, null); if (!DEV) { DEV = uid('dev_'); wr(K.D, DEV); }
-let pools = [], sess = rd(K.S, {}), tab = 'active', ready = false, pend = false, busyIds = {};
+let pools = [], sess = rd(K.S, {}), tab = 'active', ready = false, pend = false, busyIds = {}, feedErr = '';
 if (!sess || typeof sess !== 'object') sess = {};
 let dl = new URLSearchParams(window.location.search).get('poolId');
 const saveSess = () => wr(K.S, sess);
@@ -177,19 +179,35 @@ function norm(p){
 }
 const typing = () => { const a = document.activeElement; return !!(a && a.tagName === 'INPUT' && a.closest('#board') && a.value); };
 
-// ===== Global live feed listener: every device sees every pool =====
+// ===== 2. Connection status + global live feed =====
+function setCloud(on){
+  const c = $('cloud');
+  c.textContent = on ? '🟢 Online' : '🔴 Offline';
+  c.className = 'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ' + (on ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-red-300 bg-red-500/10 border-red-500/25');
+}
 function initLiveFeed(){
-  ref().on('value', snap => {
-    pools = Object.values(snap.val() || {}).filter(p => p && p.id && p.closesAt).map(norm).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
-    ready = true; setCloud(true);
+  // Socket status: flips to Online the moment the data tunnel is formed
+  database.ref('.info/connected').on('value', s => setCloud(s.val() === true));
+
+  // Global feed: root path public_pools
+  database.ref('public_pools').on('value', snap => {
+    const val = snap.val() || {};
+    pools = Object.values(val).filter(p => p && typeof p === 'object' && p.id && p.closesAt).map(norm).sort((a,b) => (b.createdAt||0) - (a.createdAt||0));
+    ready = true; feedErr = ''; setCloud(true);
     if (typing()) pend = true; else render();
     deepLink();
-  }, err => { setCloud(false); toast(err && err.code === 'PERMISSION_DENIED' ? 'Database rules are blocking access' : 'Cloud connection error'); });
-  database.ref('.info/connected').on('value', s => setCloud(!!s.val()));
-}
-function setCloud(on){ const c = $('cloud'); c.textContent = on ? '● Live cloud sync' : '● Offline'; c.className = 'inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ' + (on ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-red-300 bg-red-500/10 border-red-500/25'); }
+  }, err => {
+    ready = true; setCloud(false);
+    feedErr = err && err.code === 'PERMISSION_DENIED' ? 'Database rules are blocking access. In Firebase Console → Realtime Database → Rules, allow read/write on public_pools.' : 'Could not reach the database. Check your internet and the databaseURL.';
+    toast(feedErr); render();
+  });
 
-// Clean shareable link on the active domain (Vercel)
+  // Watchdog: if nothing arrives in 10s, stop the endless loading screen
+  setTimeout(() => {
+    if (!ready) { feedErr = 'Still cannot reach Firebase. Check your connection, the databaseURL region, and the database rules.'; render(); }
+  }, 10000);
+}
+
 const poolLink = p => window.location.origin + window.location.pathname + '?poolId=' + encodeURIComponent(p.id);
 function deepLink(){
   if (!dl || !ready) return;
@@ -209,7 +227,7 @@ const meOf = p => { const n = sess[p.id]; return n ? p.parts.find(x => x.name ==
 const isHost = p => { const m = meOf(p); return !!m && m.host; };
 const total = pt => pt.items.reduce((s,i) => s + paise(i.price), 0);
 
-let tt; function toast(m){ const t = $('toast'); t.textContent = m; t.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(() => t.classList.add('hidden'), 2600); }
+let tt; function toast(m){ const t = $('toast'); t.textContent = m; t.classList.remove('hidden'); clearTimeout(tt); tt = setTimeout(() => t.classList.add('hidden'), 3200); }
 function busy(btn, label, fn){ const h = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span>' + label; setTimeout(() => { fn(); btn.disabled = false; btn.innerHTML = h; }, 300); }
 function lock(p, manual){ if (p.closed) return; ref(p.id).update({closed: true, lockedAt: manual ? NOW() : p.closesAt}).catch(fail); }
 function nextTime(hhmm){ const [h,m] = hhmm.split(':').map(Number), d = new Date(NOW()); d.setHours(h,m,0,0); if (d.getTime() <= NOW()) d.setDate(d.getDate()+1); return d.getTime(); }
@@ -319,7 +337,7 @@ function summary(p, cl, ver, host){
    <div class="flex justify-between mt-3 px-1 text-xs"><span class="text-slate-500">${PL[p.platform].n} cart total</span><span class="mono text-white font-semibold">${money(s.total)}</span></div>${end}</div>`;
 }
 
-// Real-time search over the downloaded global feed array
+// ===== 3. Live search + render =====
 const hay = p => [PL[p.platform] ? PL[p.platform].n : '', p.wing, p.host, p.inst, ...p.parts.map(x => x.name)].join(' ').toLowerCase();
 function render(){
   const term = $('q').value.trim().toLowerCase(), words = term.split(/\s+/).filter(Boolean);
@@ -331,9 +349,10 @@ function render(){
   const keep = document.activeElement && document.activeElement.form ? {f: document.activeElement.form.dataset.id, n: document.activeElement.name} : null;
   $('board').innerHTML = list.map(card).join('');
   $('empty').classList.toggle('hidden', list.length > 0);
-  $('eT').classList.remove('ld');
-  $('eT').textContent = !ready ? 'Loading live feed…' : term ? 'No pools match' : tab === 'active' ? 'No live pools right now' : 'Nothing here yet';
-  $('eX').textContent = term ? 'Try another institute, wing, host or brand.' : tab === 'active' ? 'Be the first to start a pool. It will appear instantly for everyone.' : 'Locked pools appear here and delete themselves after 12 hours.';
+  const loading = !ready && !feedErr;
+  $('eT').classList.toggle('ld', loading);
+  $('eT').textContent = loading ? 'Loading live feed…' : feedErr ? 'Connection problem' : term ? 'No pools match' : tab === 'active' ? 'No live pools right now' : 'Nothing here yet';
+  $('eX').textContent = feedErr ? feedErr : term ? 'Try another institute, wing, host or brand.' : tab === 'active' ? 'Be the first to start a pool. It will appear instantly for everyone.' : 'Locked pools appear here and delete themselves after 12 hours.';
   const sel = $('jPool'), prev = sel.value;
   sel.innerHTML = act.length ? act.map(p => `<option value="${p.id}">${esc(PL[p.platform].n)} · ${esc(p.wing)}${p.inst ? ' · ' + esc(p.inst) : ''} · ${esc(p.host)}</option>`).join('') : '<option value="">No live pools</option>';
   if (act.some(p => p.id === prev)) sel.value = prev;
@@ -344,7 +363,7 @@ function render(){
 
 $('autofill').onclick = () => { const p = prof(); [['cHost','name'],['cPhone','phone'],['cUpi','upi'],['cInst','inst']].forEach(([i,k]) => { if (p[k]) $(i).value = p[k]; }); };
 
-// ===== Global broadcaster =====
+// ===== 4. Launch: real-time broadcast =====
 function launchPool(){
   const err = $('cErr'), digits = clean($('cPhone').value);
   err.classList.add('hidden');
@@ -436,7 +455,7 @@ function checkPayParams(){
   openPay(host, upiId, n.toFixed(2));
 }
 
-// Timers, auto-lock and auto-delete (idempotent writes, safe if several devices run them)
+// Timers, auto-lock and auto-delete (idempotent writes)
 function tick(){
   if (!ready) return;
   const now = NOW();
@@ -451,6 +470,7 @@ function tick(){
 setInterval(tick, 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
+// Boot: draw shell first, then open the cloud tunnel
 $('autofill').click(); render(); initLiveFeed(); checkPayParams();
 })();
 </script>
